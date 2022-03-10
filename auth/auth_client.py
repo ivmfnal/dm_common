@@ -1,4 +1,5 @@
-from util import to_str, to_bytes, SignedToken, TokenLib
+from ..util import to_str, to_bytes
+from . import SignedToken, TokenLib
 import time
 import requests
 
