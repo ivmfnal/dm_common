@@ -1,5 +1,5 @@
 from webpie import WPApp, WPHandler, Response, WPStaticHandler
-from data_dispatcher.db import DBUser
+from .dbuser import BaseDBUser as DBUser
 from urllib.parse import quote_plus, unquote_plus
 
 class BaseHandler(WPHandler):
