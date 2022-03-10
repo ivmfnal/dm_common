@@ -7,11 +7,8 @@ from metacat.util import to_str, to_bytes, \
 import psycopg2, json, time, secrets, traceback, hashlib, pprint, os, yaml
 from metacat.db import DBUser
 from urllib.parse import quote_plus, unquote_plus
-from metacat import Version
 
 class BaseApp(WPApp):
-
-    Version = Version
 
     def __init__(self, cfg, root_handler, **args):
         WPApp.__init__(self, root_handler, **args)

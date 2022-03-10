@@ -1,7 +1,6 @@
 from webpie import Response, WPApp
-from metacat.util import to_str, to_bytes, SignedToken
-from metacat import Version
-from metacat.db import DBUser
+from ..util import to_str, to_bytes
+from .dbuser import BaseDBUser as DBUser
 from urllib.parse import quote_plus, unquote_plus
 import hashlib, json
 
