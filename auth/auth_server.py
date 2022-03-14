@@ -44,11 +44,11 @@ if __name__ == "__main__":
     if "ssl" in auth_config:
         key = auth_config["ssl"]["key"]
         cert = auth_config["ssl"]["cert"]
-        ca_file = auth_config["ssl"]["ca_file"]
+        ca_file = auth_config["ssl"]["ca_bundle"]
         
     application = create_application(config_file)
     
-    server = HTTPServer(port, application, cert, key, verify="optional", ca_file=ca_file, debug=sys.stdout, logging=True)
+    server = HTTPServer(port, application, certfile=cert, keyfile=key, verify="optional", ca_file=ca_file, debug=sys.stdout, logging=True)
     server.run()
 else:
     application = create_application()
