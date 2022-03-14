@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block headline %}Logged in as {{token.subject}}{% endblock %}
+
+{% block content %}
+
+{% if message %}<p style="color:red">{{message}}</p>{% endif %}
+
+<table class="form" id="the_form" style="width:600px">
+	<tr>
+		<th>Token</th>
+		<td class="token">{{encoded}}</td>
+	</tr>
+    <tr>
+        <td></td>
+        <td><button onclick="download_token()">download</button>&nbsp;<button id="copyButton">copy</button>&nbsp;&nbsp;&nbsp;&nbsp;<i><span id="copied_text"></span></i></td>
+    </tr>
+    <tr>
+        <th>Subject</th>
+        <td>{{token.subject}}</td>
+	</tr>
+    <tr>
+        <th>Issuer</th>
+        <td>{{token.issuer}}</td>
+	</tr>
+    <tr>
+        <th>Expiration</th>
+        <td>{{expiration}} (UTC)</td>
+	</tr>
+</table>
+
+<script type="text/javascript">
+    var clear_timer = null;
+    
+    function download_token()
+    {
+        window.location="./token/token.jwt?download=yes"
+    }
+
+    function clear_copied()
+    {
+        document.getElementById("copied_text").innerHTML = "";
+        clear_timer = null;
+    }
+
+    function copy_token()
+    {
+        /* Copy the text inside the text field */
+        var token="{{encoded}}";
+        navigator.clipboard.writeText(token);
+        document.getElementById("copied_text").innerHTML = '<i>token copied to clipboard</i>';
+        if( clear_timer != null )
+            window.clearTimeout(clear_timer);
+        clear_timer = setTimeout(clear_copied, 2000);
+    }
+
+    document.getElementById("copyButton").addEventListener("click", copy_token);
+    
+    
+</script>
+
+
+{% endblock %}
+	

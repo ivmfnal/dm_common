@@ -2,10 +2,11 @@
 
 from webpie import WPApp, Response, WPHandler
 from wsdbtools import ConnectionPool
-from metacat.util import to_str, to_bytes, \
+from ..util import to_str, to_bytes
+from .signed_token_jwt import \
     SignedToken, SignedTokenExpiredError, SignedTokenImmatureError, SignedTokenUnacceptedAlgorithmError, SignedTokenSignatureVerificationError
 import psycopg2, json, time, secrets, traceback, hashlib, pprint, os, yaml
-from metacat.db import DBUser
+from .dbuser import DBUser
 from urllib.parse import quote_plus, unquote_plus
 
 class BaseApp(WPApp):
@@ -28,6 +29,7 @@ class BaseApp(WPApp):
             self.UserDBSchema = self.DBSchema
 
         self.AuthConfig = cfg.get("authentication")
+        self.Issuer = self.AuthConfig.get("issuer")
         secret = self.AuthConfig.get("secret") 
         if secret is None:    
             raise ValueError("Authentication secret not found in the configuration")
@@ -36,6 +38,11 @@ class BaseApp(WPApp):
             h = hashlib.sha256()
             h.update(to_bytes(secret))      
             self.TokenSecret = h.digest()
+            
+    def init(self):
+        #print("ScriptHome:", self.ScriptHome)
+        self.initJinjaEnvironment(tempdirs=[self.ScriptHome])
+        
 
     def auth_config(self, method):
         return self.AuthConfig.get(method)
@@ -89,20 +96,35 @@ class BaseApp(WPApp):
             return token.get("sub"), None
 
     def encoded_token_from_request(self, request):
+        token = self.token_from_request(request)
+        if token is not None:
+            return token.encode()
+        else:
+            return None
+
+    def token_from_request(self, request):
         encoded = request.cookies.get("auth_token") or request.headers.get("X-Authentication-Token")
         if not encoded: return None
-        try:    token = SignedToken.decode(encoded, self.TokenSecret, verify_times=True)
-        except: return None             # invalid token
-        return encoded
+        try:
+            #print("token_from_request: encoded:", encoded)
+            token = SignedToken.decode(encoded)
+            token.verify(key=self.TokenSecret)
+        except Exception as e:
+            #print("token_from_request: Exception in verify:", e, traceback.format_exc())
+            return None             # invalid token
+        return token
 
     def generate_token(self, user, payload={}, expiration=None):
         expiration = expiration or self.TokenExpiration
-        token = SignedToken(payload, subject=user, expiration=expiration)
+        token = SignedToken(payload, subject=user, expiration=expiration, issuer=self.Issuer)
         return token, token.encode(self.TokenSecret)
 
-    def response_with_auth_cookie(self, user, redirect):
+    def response_with_auth_cookie(self, user, redirect, token=None):
         #print("response_with_auth_cookie: user:", user, "  redirect:", redirect)
-        _, encoded = self.generate_token(user, {"user": user})
+        if token is not None:
+            encoded = token.encode()
+        else:
+            _, encoded = self.generate_token(user, {"user": user})
         #print("Server.App.response_with_auth_cookie: new token created:", token.TID)
         if redirect:
             resp = Response(status=302, headers={"Location": redirect})
@@ -124,10 +146,11 @@ class BaseApp(WPApp):
 
     def verify_token(self, encoded):
         try:
-            token = SignedToken.decode(encoded, self.TokenSecret, verify_times=True)
+            token = SignedToken.decode(encoded)
+            token.verify(self.TokenSecret)
         except Exception as e:
-            return False, e
-        return True, None
+            return None, e
+        return token, None
         
 class BaseHandler(WPHandler):
     
@@ -161,114 +184,4 @@ class BaseHandler(WPHandler):
         
     def jinja_globals(self):
         return {"GLOBAL_User":self.authenticated_user()}
-
-class AuthHandler(BaseHandler):
-
-    def whoami(self, request, relpath, **args):
-        user, error = self.App.user_from_request(request)
-        return user or "", "text/plain"
-        
-    def token(self, request, relpath, **args):
-        return self.App.encoded_token_from_request(request)+"\n"
-        
-    def _auth_digest(self, request_env, redirect):
-        from metacat.util import digest_server
-        # give them cookie with the signed token
-        
-        ok, data = digest_server("metadata", request_env, self.App.get_digest_password)
-        if ok:
-            #print("AuthHandler.auth: digest_server ok")
-            resp = self.App.response_with_auth_cookie(data, redirect)
-            return resp
-        elif data:
-            return Response("Authorization required", status=401, headers={
-                'WWW-Authenticate': data
-            })
-
-        else:
-            return "Authentication failed\n", 403
-
-    def _auth_ldap(self, request, redirect, username):
-        
-        # check HTTPS here
-        
-        if username:
-            password = to_str(request.body.strip())
-        else:
-            username, password = request.body.split(b":",1)
-            username = to_str(username)
-            password = to_str(password)
-        db = self.App.user_db()
-        u = DBUser.get(db, username)
-        config = self.App.auth_config("ldap")
-        #print("ldap config:", config)
-        if u.authenticate("ldap", config, password):
-            return self.App.response_with_auth_cookie(username, redirect)
-        else:
-            return "Authentication failed\n", 403
-            
-    def _auth_x509(self, request, redirect, username):
-        ssl = request.environ.get("HTTPS") == "on" or request.environ.get("REQUEST_SCHEME") == "https"
-        if not ssl:
-            return "Authentication failed\n", 403
-            
-        db = self.App.user_db()
-        u = DBUser.get(db, username)
-        if u.authenticate("x509", None, {
-            "subject_dn":   request.environ.get("SSL_CLIENT_S_DN"),
-            "issuer_dn":    request.environ.get("SSL_CLIENT_I_DN")
-        }):
-            return self.App.response_with_auth_cookie(username, redirect)
-        else:
-            return "Authentication failed\n", 403
-        
-    def auth(self, request, relpath, redirect=None, method="password", username=None, **args):
-        if method == "x509":
-            return self._auth_x509(request, redirect, username)
-        elif method == "digest":
-            return self._auth_digest(request.environ, redirect)
-        elif method == "ldap":
-            return self._auth_ldap(request, redirect, username)
-        else:
-            return "Unknown authentication method\n", 400
-            
-    def mydn(self, request, relpath):
-        ssl = request.environ.get("HTTPS") == "on" or request.environ.get("REQUEST_SCHEME") == "https"
-        if not ssl:
-            return "Use HTTPS connection\n", 400
-        return json.dumps({
-            "subject":  request.environ.get("SSL_CLIENT_S_DN",""),
-            "issuer":  request.environ.get("SSL_CLIENT_I_DN","")
-        }), "text/json"
-        
-    def logout(self, request, relpath, redirect=None, **args):
-        return self.App.response_with_unset_auth_cookie(redirect)
-
-    def login(self, request, relpath, redirect=None, **args):
-        return self.render_to_response("login.html", redirect=redirect, **self.messages(args))
-        
-    def do_login(self, request, relpath, **args):
-        username = request.POST["username"]
-        password = request.POST["password"]
-        redirect = request.POST.get("redirect", self.scriptUri() + "/gui/index")
-        #print("redirect:", redirect)
-        db = self.App.user_db()
-        u = DBUser.get(db, username)
-        if not u:
-            #print("authentication error")
-            self.redirect("./login?message=User+%s+not+found" % (username,))
-        
-        ok = u.authenticate("password", None, password)
-        if not ok:
-            ok = u.authenticate("ldap", self.App.auth_config("ldap"), password)
-
-        if not ok:
-            self.redirect("./login?error=%s" % (quote_plus("Authentication error"),))
-            
-        #print("authenticated")
-        return self.App.response_with_auth_cookie(username, redirect)
-
-    def verify(self, request, relpath, **args):
-        username, error = self.App.user_from_request(request)
-        return ("OK","text/plain") if username else (error, 403)
 

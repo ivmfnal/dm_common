@@ -1,4 +1,6 @@
-class BaseDBUser(object):
+from .authenticators import authenticator
+
+class DBUser(object):
 
     def __init__(self, db, username, name, email, flags=""):
         self.Username = username
