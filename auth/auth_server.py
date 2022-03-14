@@ -41,10 +41,10 @@ if __name__ == "__main__":
         sys.exit(1)
 
     key = cert = ca_file = None
-    if "ssl" in config:
-        key = config["ssl"]["key"]
-        cert = config["ssl"]["cert"]
-        ca_file = config["ssl"]["ca_file"]
+    if "ssl" in auth_config:
+        key = auth_config["ssl"]["key"]
+        cert = auth_config["ssl"]["cert"]
+        ca_file = auth_config["ssl"]["ca_file"]
         
     application = create_application(config_file)
     
