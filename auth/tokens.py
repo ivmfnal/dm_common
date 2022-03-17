@@ -6,6 +6,25 @@ class Client(TokenAuthClientMixin):
     def __init__(self, server_url, auth_server_url):
         TokenAuthClientMixin.__init__(self, server_url, None, None, auth_url=auth_server_url)
 
+def time_delta(dt):
+    dt = int(dt)
+    if dt < 0:
+        return "-"
+    if dt <= 60:
+        return "%ds" % (dt,)
+    elif dt <= 3600:
+        m = dt//60
+        s = dt%60
+        return "%dm%ds" % (m, s)
+    elif dt <= 24*3600:
+        h = dt//3600
+        m = (dt//60)%60
+        return "%dh%dm" % (h, m)
+    else:
+        d = dt//(3600*24)
+        h = (dt % (3600*24))/3600
+        return "%dd%dh" % (d, h)
+
 def do_list(client, args):
     tl = TokenLib()
     for url, token in tl.items():
