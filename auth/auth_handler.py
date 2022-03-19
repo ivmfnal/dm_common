@@ -81,10 +81,15 @@ class AuthHandler(BaseHandler):
         ssl = request.environ.get("HTTPS") == "on" or request.environ.get("REQUEST_SCHEME") == "https"
         if not ssl:
             return "Use HTTPS connection\n", 400
-        return json.dumps({
-            "subject":  request.environ.get("SSL_CLIENT_S_DN",""),
-            "issuer":  request.environ.get("SSL_CLIENT_I_DN","")
-        }), "text/json"
+        if relpath == "issuer":
+            return request.environ.get("SSL_CLIENT_I_DN",""), "text/plain"
+        elif relpath == "subject":
+            return request.environ.get("SSL_CLIENT_S_DN",""), "text/plain"
+        else:
+            return json.dumps({
+                "subject":  request.environ.get("SSL_CLIENT_S_DN",""),
+                "issuer":  request.environ.get("SSL_CLIENT_I_DN","")
+            }), "text/json"
         
     def logout(self, request, relpath, redirect=None, **args):
         return self.App.response_with_unset_auth_cookie(redirect)
